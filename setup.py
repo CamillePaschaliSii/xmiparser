@@ -4,7 +4,7 @@ import sys, os
 def read(*rnames):
     return open(os.path.join(os.path.dirname(__file__), *rnames)).read()
 
-version = '1.6dev'
+version = '1.7dev'
 shortdesc = "XMI Parser (API for the UML XML representation specified by OMG)"
 packages=find_packages(exclude=['ez_setup',])
 
@@ -22,7 +22,7 @@ setup(name='xmiparser',
       description=shortdesc,
       long_description=long_description,
       classifiers=[
-            'Programming Language :: Python',
+            'Programming Language :: Python 3.6',
             'License :: OSI Approved :: GNU General Public License (GPL)',
             'Operating System :: OS Independent',
       ], # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
@@ -37,8 +37,7 @@ setup(name='xmiparser',
       zip_safe=False,
       install_requires=[
           'setuptools',
-          'zope.interface',
-          'ordereddict',
+          'zope.interface'
       ],
       entry_points="""
       # -*- Entry points: -*-

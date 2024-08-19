@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-import types
-import logging
 log = logging.getLogger('utils')
 
 specialrpl = {
@@ -19,7 +17,7 @@ def mapName(oldName):
     return oldName.replace('-', '_')
 
 def toBoolean(v):
-    if isinstance(v, (str, unicode)):
+    if isinstance(v, (str, str)):
         v = v.lower().strip()
     if v in (0, '0', 'false', False):
         return False
@@ -32,7 +30,7 @@ def toBoolean(v):
 def normalize(data, doReplace=False):
     """Converts a unicode to string, stripping blank spaces."""
     log.debug("Normalizing %r.", data)
-    if type(data) not in types.StringTypes:
+    if not isinstance(data, str):
         log.debug("Not string, returning as-is.")
         return data
     try:
@@ -49,17 +47,17 @@ def normalize(data, doReplace=False):
         return data
     except ValueError:
         pass
-    if type(data) is types.StringType:
+    if isinstance(data, bytes):
         # make unicode
         data = data.decode('utf-8')
-    if type(data) is types.UnicodeType:
+    if isinstance(data, str):
         data = data.strip()
         if doReplace:
             for key in specialrpl:
                 data = data.replace(key, specialrpl[key])    
     if not data is None:
         log.debug("Normalized, returning %r.", data)
-        return data.encode('utf-8')
+        return data
     else:
         return None
 
@@ -68,14 +66,9 @@ def wrap(text, width):
     """
     A word-wrap function that preserves existing line breaks
     and most spaces in the text. Expects that existing line
-    breaks are posix newlines (\n).
+    breaks are posix newlines (\\n).
     """
-    return reduce(lambda line, word, width=width: '%s%s%s' %
-                  (line,
-                   ' \n'[(len(line[line.rfind('\n')+1:])
-                         + len(word.split('\n',1)[0]
-                              ) >= width)],
-                   word),
-                  text.split(' ')
-                 )
+    import textwrap
+    wrapped = textwrap.wrap(text, width)
+    return "".join(wrapped)
 

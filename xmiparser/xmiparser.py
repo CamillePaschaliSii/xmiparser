@@ -10,19 +10,19 @@
 # Licence:     GPL
 #-----------------------------------------------------------------------------
 
-import string
 import os.path
 import logging
 from zipfile import ZipFile
-from ordereddict import OrderedDict
 from xml.dom import minidom
-from zope.interface import implements
-from utils import mapName
-from utils import toBoolean
-from utils import normalize
-from utils import wrap as doWrap
-from interfaces import IPackage
-import zargoparser
+from zope.interface import implementer
+from .interfaces import IPackage
+from .ordereddict import OrderedDict
+from .utils import mapName
+from .utils import normalize
+from .utils import toBoolean
+from .utils import wrap as doWrap
+from .zargoparser import getProfileFilenames
+from .zargoparser import getProfilesDirectories
 
 log = logging.getLogger('XMIparser')
 
@@ -38,7 +38,7 @@ except ImportError:
 default_wrap_width = 64
 
 # Tag constants
-clean_trans = string.maketrans(':-. /$', '______')
+clean_trans = str.maketrans(':-. /$', '______')
 
 
 class XMI1_0(object):
@@ -270,7 +270,7 @@ class XMI1_0(object):
 
                 # check whether this association already exists or we have to instantiate it
                 relid = self.getId(rel)
-                if allObjects.has_key(relid):
+                if relid in allObjects:
                     assoc = allObjects[relid]
                 else:
                     assoc = associationXMIClass(rel)
@@ -282,7 +282,7 @@ class XMI1_0(object):
                 try:
                     #check if an association class already exists
                     relid = self.getId(rel)
-                    if allObjects.has_key(relid):
+                    if relid in allObjects:
                         assoc = allObjects[relid]
                         assoc.calcEnds()
                     else:
@@ -397,13 +397,13 @@ class XMI1_0(object):
                                               recursive=0, default=None),
                            )
         if not tagname:
-            raise TypeError, 'element %s has empty taggedValue' % self.getId(el)
+            raise TypeError(f"element {self.getId(el)} has empty taggedValue")
         tagvalue = normalize(getAttributeValue(el, XMI.TAGGED_VALUE_VALUE,
                                                recursive=0, default=None),
                             doReplace)
         return tagname, tagvalue
 
-    def collectTagDefinitions(self, el):
+    def collectTagDefinitions(self, el, prefix=''):
         """Dummy function, only needed in xmi >=1.1"""
         pass
 
@@ -693,7 +693,7 @@ class XMI1_2 (XMI1_1):
                 try:
                     typeElement = datatypes[typeid]
                 except KeyError:
-                    raise ValueError, 'datatype %s not defined in attribute %s' % (typeid,att.getName())
+                    raise ValueError(f"datatype {typeid} not defined in attribute {att.getName()}")
                 att.type = XMI.getName(typeElement)
                 # Collect all datatype names (to prevent pure datatype
                 # classes from being generated)
@@ -714,7 +714,7 @@ def getSubElements(domElement):
 def getSubElement(domElement, default=_marker, ignoremult=0):
     els = getSubElements(domElement)
     if len(els) > 1 and not ignoremult:
-        raise TypeError, 'more than 1 element found'
+        raise TypeError(f"more than 1 element found")
     try:
         return els[0]
     except IndexError:
@@ -756,7 +756,7 @@ def getElementsByTagName(domElement, tagName, recursive=0):
     The only difference from the original getElementsByTagName is
     the optional recursive parameter.
     """
-    if isinstance(tagName, basestring):
+    if isinstance(tagName, str):
         tagNames = [tagName]
     else:
         tagNames = tagName
@@ -775,7 +775,7 @@ def getElementByTagName(domElement, tagName, default=_marker, recursive=0):
     """
     els = getElementsByTagName(domElement, tagName, recursive=recursive)
     if len(els) > 1:
-        raise TypeError, 'more than 1 element found'
+        raise TypeError(f"more than 1 element found")
     try:
         return els[0]
     except IndexError:
@@ -859,13 +859,13 @@ class XMIElement(object):
             try:
                 tagname, tagvalue = XMI.getTaggedValue(tgv)
                 log.debug("Found tag '%s' with value '%s'.", tagname, tagvalue)
-                if self.taggedValues.has_key(tagname):
+                if tagname in self.taggedValues:
                     log.debug("Invoking Poseidon multiline fix for "
                               "tagname '%s'.", tagname)
                     self.taggedValues[tagname] += '\n'+tagvalue
                 else:
                     self.taggedValues[tagname] = tagvalue
-            except TypeError, e:
+            except TypeError as e:
                 log.warn("Broken tagged value in id '%s'.",
                          XMI.getId(self.domElement))
         log.debug("Found the following tagged values: %r.",
@@ -930,7 +930,7 @@ class XMIElement(object):
         return res
 
     def hasTaggedValue(self, name):
-        return self.taggedValues.has_key(name)
+        return name in self.taggedValues
 
     def hasAttributeWithTaggedValue(self, tag, value=None):
         """Return True if any attribute has a TGV 'tag'.
@@ -1045,18 +1045,25 @@ class XMIElement(object):
         """Returns all referenced schema names."""
         return [str(c.getRef()) for c in self.getChildren() if c.getRef()]
 
+    def showLevel(self, outfile, level):
+        indentation = ""
+        if 0 < level:
+            for i in range(0, level):
+                indentation += "  "
+            outfile.write('%s' % (indentation))
+
     def show(self, outfile, level):
-        showLevel(outfile, level)
+        self.showLevel(outfile, level)
         outfile.write('Name: %s  Type: %s\n' % (self.name, self.type))
-        showLevel(outfile, level)
+        self.showLevel(outfile, level)
         outfile.write('  - Complex: %d  MaxOccurs: %d\n' % \
             (self.complex, self.maxOccurs))
-        showLevel(outfile, level)
+        self.showLevel(outfile, level)
         outfile.write('  - Attrs: %s\n' % self.attrs)
-        showLevel(outfile, level)
+        self.showLevel(outfile, level)
         outfile.write('  - AttributeDefs: %s\n' % self.attributeDefs)
         for key in self.attributeDefs.keys():
-            showLevel(outfile, level + 1)
+            self.showLevel(outfile, level + 1)
             outfile.write('key: %s  value: %s\n' % \
                 (key, self.attributeDefs[key]))
         for child in self.getChildren():
@@ -1113,7 +1120,7 @@ class XMIElement(object):
 
     def hasStereoType(self, stereotypes, umlprofile=None):
         log.debug("Looking if element has stereotype %r", stereotypes)
-        if isinstance(stereotypes, (str, unicode)):
+        if isinstance(stereotypes, (str, str)):
             stereotypes = [stereotypes]
         if umlprofile:
             for stereotype in stereotypes:
@@ -1254,9 +1261,8 @@ class StateMachineContainer(object):
     def getStateMachines(self):
         return self.statemachines
 
-
+@implementer(IPackage)
 class XMIPackage(XMIElement, StateMachineContainer):
-    implements(IPackage)
     project = None
     isroot = 0
 
@@ -1361,7 +1367,7 @@ class XMIPackage(XMIElement, StateMachineContainer):
             if c.nodeName == XMI.ASSOCIATION_CLASS:
                 # maybe it was already instantiated (when building relations)?
                 classId = c.getAttribute('xmi.id').strip()
-                if allObjects.has_key(classId):
+                if classId in allObjects:
                     xc = allObjects[classId]
                     xc.setPackage(self)
                 else:
@@ -1486,8 +1492,8 @@ class XMIPackage(XMIElement, StateMachineContainer):
         return ".".join([p.getName() for p in path])
 
 
+@implementer(IPackage)
 class XMIModel(XMIPackage):
-    implements(IPackage)
     isroot = 1
     parent = None
     diagrams = {}
@@ -2113,7 +2119,7 @@ class XMIAssociation (XMIElement):
         res = '%s_%s' % (fromname, toname)
         log.debug("Combining that fromname and toname to form our "
                   "relation name: '%s'.", res)
-        if isinstance(res, basestring):
+        if isinstance(res, str):
             res = res.strip().lower()
             log.debug("Making it lowercase for good measure: '%s'.", res)
         return res
@@ -2142,7 +2148,7 @@ class XMIAssociation (XMIElement):
             res = '%s_%s' % (toname, fromname)
             log.debug("Combining that fromname and toname to form our "
                       "relation name: '%s'.", res)
-            if isinstance(res, basestring):
+            if isinstance(res, str):
                 res = res.strip().lower()
                 log.debug("Making it lowercase for good measure: '%s'.", res)
         return res
@@ -2647,14 +2653,14 @@ class XMIDiagram(XMIElement):
         ownerel = getElementByTagName(self.domElement, XMI.DIAGRAM_OWNER,
                                       default=None)
         if not ownerel:
-            print 'no ownerel'
+            print(f"no ownerel")
             return
 
         model_el = getElementByTagName(ownerel,
                                        XMI.DIAGRAM_SEMANTICMODEL_BRIDGE_ELEMENT,
                                        default=None, recursive=1)
         if not model_el:
-            print 'no modelel'
+            print(f"no modelel")
             return
 
         el = getSubElement(model_el)
@@ -2720,7 +2726,7 @@ def buildStereoTypes(doc, profile=''):
         if not id:
             continue
         stereotypes[getId(st)] = st
-        #print 'stereotype:', id, XMI.getName(st)
+        # print(f"stereotype: {id} {XMI.getName(st)}") 
 
 def buildHierarchy(doc, packagenames, profile_docs=None):
     """Builds Hierarchy out of the doc."""
@@ -2747,10 +2753,10 @@ def buildHierarchy(doc, packagenames, profile_docs=None):
         packageElements = doc.getElementsByTagName(XMI.PACKAGE)
         for p in packageElements:
             n = XMI.getName(p)
-            print 'package name:', n
+            print(f"package name: {n}")
             if n in packagenames:
                 doc = p
-                print 'package found'
+                print(f"package found")
                 break
 
     buildDataTypes(doc)
@@ -2779,7 +2785,7 @@ def parse(xschemaFileName=None, xschema=None, packages=[], generator=None,
           profile_dir=None, **kw):
     """ """
     global XMI
-    profiles_directories = zargoparser.getProfilesDirectories()
+    profiles_directories = getProfilesDirectories()
     if profile_dir:
         profiles_directories[0:0] = [profile_dir]
     if not profiles_directories:
@@ -2803,7 +2809,7 @@ def parse(xschemaFileName=None, xschema=None, packages=[], generator=None,
             profiles = [n for n in zf.namelist() if os.path.splitext(n)[1].lower() in ('.profile',)]
             if profiles:
                 assert(len(profiles)==1)
-                for fn in zargoparser.getProfileFilenames(zf.read(profiles[0])):
+                for fn in getProfileFilenames(zf.read(profiles[0])):
                     found = False
                     for profile_directory in profiles_directories:
                         profile_path = os.path.join(profile_directory, fn)
@@ -2842,6 +2848,7 @@ def parse(xschemaFileName=None, xschema=None, packages=[], generator=None,
             XMI = XMI1_0(**kw)
     except:
         log.debug("No version info found, taking XMI1_0.")
+        XMI = XMI1_0(**kw)
 
     XMI.generator = generator
 
